@@ -1,0 +1,160 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <!-- 引入样式 -->
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+
+    <!-- 先引入 Vue -->
+    <script src="https://unpkg.com/vue/dist/vue.js"></script>
+    <!-- 引入组件库 -->
+    <script src="https://unpkg.com/element-ui/lib/index.js"></script>
+
+    <script src="js/jquery-3.4.1.min.js"></script>
+    <script src="js/echarts.js"></script>
+    <script src="js/echarts-gl.js"></script>
+</head>
+<body>
+<!-- 文章信息弹窗 -->
+<div id="app">
+    请输入搜索关键词/标题/doi:<el-input v-model="keyword" placeholder="请输入搜索关键词/标题/doi"></el-input>
+    请输入被引数最小值：<el-input v-model="citingNum" placeholder="请输入被引数最小值"></el-input>
+    <el-button @click="filt">搜索</el-button>
+    <el-dialog :visible.sync="visible" title="Paper Info">
+        <p>Title: {{paper.title}}</p>
+        <p>Authors: {{paper.author}}</p>
+        <p>Pubday: {{paper.pubday}}  Doi: {{paper.doi}}</p>
+        <p>Keywords: {{paper.keywords}}</p>
+        <p>Brief: {{paper.brief}}</p>
+    </el-dialog>
+</div>
+
+
+<!-- 为ECharts准备一个具备大小（宽高）的Dom -->
+<div id="main" style="width: 2200px;height:2800px;"></div>
+
+
+<script type="text/javascript">
+    var paperMap;
+    var DATA;
+    // 基于准备好的dom，初始化echarts实例
+    var myChart = echarts.init(document.getElementById('main'));
+    myChart.showLoading();
+
+    //eCharts设置
+    $.get('data/citing-net.json', function (data) {
+        DATA = data;
+        setChart(DATA,null,100);
+    });
+
+    /**
+     * 设置图表
+     * @param data
+     */
+    function setChart(data,keyword,citingNum){
+        var nodes = [];
+        var edges = data.edges;
+        data.nodes.forEach(function (node) {
+            if(keyword!=null){
+                if(node.title.toLowerCase().search(keyword.toLowerCase())!=-1 || node.name.toLowerCase().search(keyword.toLowerCase())!=-1){
+                    node.label = {show: true};
+                    nodes.push(node);
+                }
+                else{
+                    node.label = {show: false};
+                    if(node.value>citingNum){
+                        nodes.push(node);
+                    }
+                }
+            }else {
+                if(node.value>citingNum){
+                    nodes.push(node);
+                }
+            }
+        });
+        edges.forEach(function (edge) {
+            edge.value = 1;
+        });
+
+        myChart.hideLoading();
+
+        myChart.setOption(option = {
+            title: {
+                text: 'Sankey Diagram'
+            },
+            label: {
+                formatter: p => {
+                    if(p.data.name == null)
+                        return null;
+                    return p.data.title
+                }
+            },
+            tooltip: {
+                trigger: 'item',
+                triggerOn: 'mousemove',
+                formatter: p => {
+                    if(p.data.name == null)
+                        return null;
+                    return p.data.title
+                        +'<br/>'+p.data.name
+                }
+            },
+            series: [
+                {
+                    type: 'sankey',
+                    data: nodes,
+                    links: edges,
+                    focusNodeAdjacency: 'allEdges',
+                    itemStyle: {
+                        normal: {
+                            borderWidth: 1,
+                            borderColor: '#aaa'
+                        }
+                    },
+                    lineStyle: {
+                        normal: {
+                            color: 'source',
+                            curveness: 0.5
+                        }
+                    }
+                }
+            ]
+        });
+    }
+
+    //加载文章数据
+    $.get('data/paper-data.json', function (data) {
+        paperMap = data;
+
+        //点击事件
+        myChart.on('click',function (param) {
+            if(param.dataType == 'node'){
+                paper = paperMap[param.data.name];
+                vueDialog.paper = paper;
+                vueDialog.visible = true;
+            }
+        })
+    });
+
+    //加载vue
+    var vueDialog = new Vue({
+        el: '#app',
+        data: {
+            keyword: null,
+            citingNum: 100,
+            visible: false,
+            paper: {}
+        },
+        methods: {
+            filt: function () {
+                setChart(DATA,this.keyword,this.citingNum);
+            }
+        }
+
+    })
+
+</script>
+
+</body>
+</html>

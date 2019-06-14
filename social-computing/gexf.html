@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Title</title>
+    <!-- 引入样式 -->
+    <link rel="stylesheet" href="https://unpkg.com/element-ui/lib/theme-chalk/index.css">
+
+    <!-- 先引入 Vue -->
+    <script src="https://unpkg.com/vue/dist/vue.js"></script>
+    <!-- 引入组件库 -->
+    <script src="https://unpkg.com/element-ui/lib/index.js"></script>
+
+    <script src="js/jquery-3.4.1.min.js"></script>
+    <script src="js/echarts.js"></script>
+    <script src="js/dataTool.js"></script>
+</head>
+<body>
+<!-- 文章信息弹窗 -->
+<div id="app">
+    请输入搜索关键词/标题/doi:<el-input v-model="keyword" placeholder="请输入搜索关键词/标题/doi"></el-input>
+    请输入被引数最小值：<el-input v-model="citingNum" placeholder="请输入被引数最小值"></el-input>
+    <el-button @click="filt">搜索</el-button>
+    <el-dialog :visible.sync="visible" title="Paper Info">
+        <p>Title: {{paper.title}}</p>
+        <p>Authors: {{paper.author}}</p>
+        <p>Pubday: {{paper.pubday}}  Doi: {{paper.doi}}</p>
+        <p>Keywords: {{paper.keywords}}</p>
+        <p>Brief: {{paper.brief}}</p>
+    </el-dialog>
+</div>
+
+<!-- 为ECharts准备一个具备大小（宽高）的Dom -->
+<div id="main" style="width: 1900px;height:1800px;"></div>
+
+
+<script type="text/javascript">
+    var paperMap;
+    var DATA;
+    var minCited = 50;
+    // 基于准备好的dom，初始化echarts实例
+    var myChart = echarts.init(document.getElementById('main'));
+    myChart.showLoading();
+
+
+    //eCharts设置
+    $.get('data/citing-net-all.gexf', function (xml) {
+        DATA = echarts.dataTool.gexf.parse(xml);
+        setChart(DATA,null,minCited);
+    });
+
+    /**
+     * 设置图表
+     * @param data
+     */
+    function setChart(data,keyword,citingNum){
+        var nodes = [];
+        var edges = data.links;
+        data.nodes.forEach(function (node) {
+            if(keyword!=null){
+                if(node.id.toLowerCase().search(keyword.toLowerCase())!=-1 || node.name.toLowerCase().search(keyword.toLowerCase())!=-1){
+                   node.label = {show: true,
+                        formatter: p => {
+                            if(p.data.name == null)
+                                return null;
+                            return p.data.name
+                                +'  DOI:'+p.data.id
+                        }};
+                    nodes.push(node);
+                }
+                else{
+                    node.label = {show: false};
+                    if(node.attributes.cited>citingNum){
+                        nodes.push(node);
+                    }
+                }
+            }else {
+                if(node.attributes.cited>citingNum){
+                    nodes.push(node);
+                }
+            }
+        });
+        myChart.hideLoading();
+
+        option = {
+            label: {
+                show: true,
+                fontSize: 14,
+                position: 'right',
+                formatter: p => {
+                    if(p.data.id == null)
+                        return "";
+                    return p.data.name
+                        +'<br/>'+p.data.id
+                }
+            },
+            series: [{
+                type: 'graph',
+                layout: 'none',
+                edgeSymbol: ['arrow', 'none'],
+                roam: true,
+                focusNodeAdjacency: true,
+                itemStyle: {
+                    normal: {
+                        borderColor: '#fff',
+                        borderWidth: 1,
+                        shadowBlur: 10,
+                        shadowColor: 'rgba(0, 0, 0, 0.3)'
+                    }
+                },
+
+                draggable: true,
+                data: nodes,
+                label: {
+                    position: 'right',
+                    color: 'blue',
+                    formatter: '{b}'
+                },
+                lineStyle: {
+                    color: 'source',
+                    curveness: 0.3
+                },
+                emphasis: {
+                    lineStyle: {
+                        width: 10
+                    }
+                },
+                links: edges
+            }]
+        };
+
+        myChart.setOption(option);
+    }
+
+    //加载文章数据
+    $.get('data/paper-data.json', function (data) {
+        paperMap = data;
+
+        //点击事件
+        myChart.on('click',function (param) {
+            if(param.dataType == 'node'){
+                paper = paperMap[param.data.id];
+                vueDialog.paper = paper;
+                vueDialog.visible = true;
+            }
+        })
+    });
+
+    //文章信息弹窗
+    var vueDialog = new Vue({
+        el: '#app',
+        data: {
+            keyword: null,
+            citingNum: minCited,
+            visible: false,
+            paper: {}
+        },
+        methods: {
+            filt: function () {
+                setChart(DATA,this.keyword,this.citingNum);
+            }
+        }
+
+    })
+
+</script>
+</body>
+</html>
